@@ -45,7 +45,7 @@ Cove 的目标是在**单台桌面电脑**上，用一个命令获得"文件隔�
 - 不支持需要原始 TCP/UDP 的 MCP（如 PostgreSQL、MySQL、Redis）；v0.1 仅支持 HTTPS 型 API。
 - 不支持 Windows 原生进程沙箱；Agent 运行在 Linux 容器中。
 - 不做团队共享、云端密钥托管、多用户权限系统。
-- 不在沙箱内提供浏览器图形界面；DSH 的 Web UI 可作为 v0.1 的已知限制。
+- 不在沙箱内提供通用浏览器；DSH 的 Web UI 通过仅绑定 loopback 的发布端口提供（见设计 ADR-0004）。
 
 ## 3. 用户与场景
 
@@ -123,8 +123,8 @@ Cove 的目标是在**单台桌面电脑**上，用一个命令获得"文件隔�
 
 - `cove secret set <id>`、`list`、`remove`、`rotate`。
 - Windows 使用 DPAPI（CurrentUser）加密；密钥文件权限仅当前用户可读写。
-- 密钥只在以下位置出现：用户输入、Cove 宿主进程内存、DPAPI 密文、broker 进程内存及其启动配置
-  （broker 读取后立即删除宿主临时文件；配置不落在沙箱可见的挂载中）。
+- 密钥只在以下位置出现：用户输入、Cove 宿主进程内存、DPAPI 密文、broker 进程内存及容器启动环境
+  （broker 解析后立即从 `process.env` 删除；容器删除后不残留，且不落在沙箱可见的挂载中）。
 - 密钥不得写入 shell history、日志、审计、会话状态、异常堆栈。
 - `list` 只显示元数据（ID、标签、允许域名、更新时间），不显示明文或掩码片段。
 - 非 Windows 平台：优先系统 keychain；无可用后端时失败关闭，除非显式开发模式。
@@ -154,7 +154,7 @@ DPAPI 密文在另一 Windows 用户下无法解密。
 | --- | --- | --- | --- |
 | Claude Code | `claude` | `ANTHROPIC_API_KEY` 占位符；broker 注入 `x-api-key` | 关闭非必要遥测 |
 | Codex | `codex` | `OPENAI_API_KEY` 占位符；broker 注入 `Authorization` | 关闭内部沙箱，由 Cove 提供边界 |
-| DSH | `dsh` | `DEEPSEEK_API_KEY` 占位符；broker 注入 `Authorization` | v0.1 支持 headless/默认 profile，Web UI 见限制 |
+| DSH | `dsh web` | `DEEPSEEK_API_KEY` 占位符；broker 注入 `x-api-key` | v0.1 通过仅 loopback 的端口发布其 Web UI |
 | Shell | `bash` | 无 | 用于调试与自定义 Agent |
 
 - 用户可通过 `cove run <agent> -- <args>` 透传参数。
@@ -292,5 +292,5 @@ DPAPI 密文在另一 Windows 用户下无法解密。
 | 恶意 MCP 使用被注入凭据执行写操作 | 数据被改/外传 | 最小权限 Token、方法白名单、审计、后续写操作审批 |
 | CA 被沙箱信任带来的中间人面 | 若 broker 被攻破可解密沙箱流量 | broker 最小化、只读、非 root、密钥仅宿主 |
 | 证书固定/不走系统 CA 的工具 | 请求失败 | 明确不支持；提供诊断 |
-| DSH Web UI 无终端形态 | 体验受限 | v0.1 支持 headless/默认 CLI，记录限制；后续端口转发方案 |
+| DSH 无默认 TUI，Web UI 端口需发布到宿主 | 本机端口暴露/兼容性 | 仅绑定 127.0.0.1、随机端口、DSH token；固定版本并回归 |
 | Windows 文件权限/路径差异 | 挂载失败或不可写 | 集成测试覆盖；doctor 检查 |
