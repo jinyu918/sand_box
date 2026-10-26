@@ -206,6 +206,12 @@ describe.skipIf(process.env.COVE_SKIP_DOCKER === '1')('broker + sandbox integrat
           body: '{"hello":"world"}',
         });
         console.log(JSON.stringify({ kind: 'reverse', status: reverse.status, body: await reverse.json() }));
+        const bodyLeak = await fetch('https://upstream.test/body', {
+          method: 'POST',
+          headers: { authorization: 'Bearer ${placeholder}', 'content-type': 'application/json' },
+          body: '{"token":"${placeholder}"}',
+        });
+        console.log(JSON.stringify({ kind: 'body', status: bodyLeak.status }));
         try {
           const direct = await fetch('https://example.com/', { signal: AbortSignal.timeout(4000) });
           console.log(JSON.stringify({ kind: 'direct', status: direct.status }));
@@ -245,6 +251,7 @@ describe.skipIf(process.env.COVE_SKIP_DOCKER === '1')('broker + sandbox integrat
     expect(reverseBody?.authorization).toBe(`Bearer ${secret}`);
     expect(reverseBody?.path).toBe('/v1/messages?x=1');
     expect(reverseBody?.body).toBe('{"hello":"world"}');
+    expect(lines.find((line) => line.kind === 'body')?.status).toBe(400);
 
     const audit = await readFile(path.join(auditDir, 'audit.jsonl'), 'utf8');
     expect(audit).toContain('"action":"allow"');
