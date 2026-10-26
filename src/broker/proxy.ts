@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { sanitizeLogValue } from '../core/redact.js';
+import { redactText, sanitizeLogValue } from '../core/redact.js';
 import { normalizeRequestPath } from '../core/net.js';
 import type { AuditLogger } from './audit.js';
 import { injectCredential, sanitizeInboundHeaders, sanitizeResponseHeaders } from './inject.js';
@@ -230,13 +230,14 @@ export class ProxyHandler {
     action: AuditEvent['action'];
     reason: string;
   }): void {
+    const sensitive = this.policy.credentialsList().flatMap((credential) => [credential.placeholder, credential.value]);
     const event: AuditEvent = {
       ts: new Date().toISOString(),
       session: this.config.sessionId,
       kind: 'http',
-      host: sanitizeLogValue(input.host, 253),
+      host: sanitizeLogValue(redactText(input.host, sensitive), 253),
       method: sanitizeLogValue(input.method, 16),
-      path: sanitizeLogValue(input.path, 512),
+      path: sanitizeLogValue(redactText(input.path, sensitive), 512),
       status: input.status,
       ms: Date.now() - input.started,
       bytes: input.bytes,

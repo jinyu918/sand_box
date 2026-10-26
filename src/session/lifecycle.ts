@@ -31,6 +31,7 @@ export interface RunSessionOptions {
   agent: AgentId;
   args: string[];
   allowProjectSecrets: boolean;
+  trustProjectConfig?: boolean;
   open?: boolean;
   tty?: boolean;
 }
@@ -55,7 +56,12 @@ export async function runSession(deps: SessionDependencies, options: RunSessionO
   const projectDir = await assertProjectPath(options.projectDir);
   const projectConfig = await loadProjectConfig(projectDir);
   const scan = await scanProject(projectDir);
-  assertProjectSafe(scan, options.allowProjectSecrets || projectConfig.security.allowProjectSecretFiles);
+  assertProjectSafe(scan, options.allowProjectSecrets);
+  const effectiveProject = {
+    ...projectConfig,
+    security: { allowProjectSecretFiles: false },
+    egress: { extraHosts: options.trustProjectConfig === true ? projectConfig.egress.extraHosts : [] },
+  };
 
   await ensureImages(deps);
 
@@ -97,7 +103,7 @@ export async function runSession(deps: SessionDependencies, options: RunSessionO
       agent: options.agent,
       secrets,
       mcp,
-      project: projectConfig,
+      project: effectiveProject,
     });
     const brokerConfig: BrokerConfig = {
       sessionId,
@@ -191,9 +197,20 @@ export async function runSession(deps: SessionDependencies, options: RunSessionO
       return { exitCode: 0, sessionId, webUrl };
     }
 
-    const exitCode = await deps.docker.runSandboxInteractive(sandboxOptions, options.tty !== false);
-    return { exitCode, sessionId };
+    const onSignal = (): void => {
+      void deps.docker.stopAndRemove(record.container).catch(() => undefined);
+    };
+    process.once('SIGINT', onSignal);
+    process.once('SIGTERM', onSignal);
+    try {
+      const exitCode = await deps.docker.runSandboxInteractive(sandboxOptions, options.tty !== false);
+      return { exitCode, sessionId };
+    } finally {
+      process.removeListener('SIGINT', onSignal);
+      process.removeListener('SIGTERM', onSignal);
+    }
   } catch (error) {
+    record.state = 'failed';
     await updateSession(deps.paths, record, { state: 'failed' }).catch(() => undefined);
     if (artifacts === undefined) {
       await removeSessionConfig(deps.paths, sessionId).catch(() => undefined);
@@ -214,11 +231,21 @@ async function runDshSession(
 ): Promise<string> {
   if (publish === undefined) throw new CoveError('INTERNAL', 'DSH 端口未配置');
   await deps.docker.runSandboxDetached(sandboxOptions);
+  const gatewayName = `cove-gw-${sandboxOptions.sessionId}`;
+  await deps.docker.startDshGateway({
+    name: gatewayName,
+    image: deps.config.images.broker,
+    network: sandboxOptions.network,
+    sandboxName: sandboxOptions.name,
+    hostPort: publish.hostPort,
+    containerPort: publish.containerPort,
+  });
   const publicUrl = `http://127.0.0.1:${publish.hostPort}`;
   const url = await waitForDsh(deps.docker, sandboxOptions.name, publicUrl);
   process.stdout.write(`\nDSH Web UI: ${url}\n按 Ctrl-C 结束会话。\n`);
   if (open) openBrowser(url);
   const onInterrupt = (): void => {
+    void deps.docker.stopAndRemove(gatewayName);
     void deps.docker.stopAndRemove(sandboxOptions.name);
   };
   process.once('SIGINT', onInterrupt);
@@ -226,6 +253,7 @@ async function runDshSession(
     await deps.docker.waitContainer(sandboxOptions.name);
   } finally {
     process.removeListener('SIGINT', onInterrupt);
+    await deps.docker.stopAndRemove(gatewayName).catch(() => undefined);
   }
   return url;
 }
@@ -239,7 +267,9 @@ async function waitForDsh(docker: DockerRuntime, container: string, publicUrl: s
       try {
         const printed = new URL(match[0]);
         const base = new URL(publicUrl);
-        const url = `${base.origin}${printed.pathname}${printed.search}`;
+        if (printed.pathname !== '/' && !printed.pathname.startsWith('/?')) continue;
+        if (printed.search.length > 0 && !/^\?token=[A-Za-z0-9_-]+$/u.test(printed.search)) continue;
+        const url = `${base.origin}/${printed.search}`;
         if (await httpReady(url)) return url;
       } catch {
         // Keep polling.
@@ -256,7 +286,7 @@ async function waitForDsh(docker: DockerRuntime, container: string, publicUrl: s
 async function httpReady(url: string): Promise<boolean> {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(2000) });
-    return response.status < 500;
+    return response.status < 500 && response.status !== 404;
   } catch {
     return false;
   }
@@ -326,12 +356,13 @@ async function cleanupSession(deps: SessionDependencies, artifacts: SessionArtif
       errors.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
+  await attempt('dsh-gateway', () => deps.docker.stopAndRemove(`cove-gw-${record.id}`));
   await attempt('sandbox', () => deps.docker.stopAndRemove(record.container));
   await attempt('broker', () => deps.docker.stopAndRemove(record.broker));
   await attempt('network', () => deps.docker.removeNetwork(record.network));
   await attempt('volume', () => deps.docker.removeVolume(record.homeVolume));
   await attempt('config', () => removeSessionConfig(deps.paths, record.id));
-  const state = errors.length === 0 ? 'stopped' : 'failed';
+  const state = errors.length === 0 && record.state !== 'failed' ? 'stopped' : 'failed';
   await updateSession(deps.paths, record, { state }).catch(() => undefined);
   if (errors.length > 0) {
     process.stderr.write(`cove: 清理未完全成功，可运行 \`cove down --all\`：${errors.join('; ')}\n`);

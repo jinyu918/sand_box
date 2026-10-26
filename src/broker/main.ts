@@ -64,9 +64,9 @@ async function main(): Promise<void> {
     res.writeHead(404).end();
   });
 
-  await listen(reverseServer, PROXY_PORT);
-  await listen(tlsServer, TLS_PORT);
-  await dnsServer.start();
+  await listen(reverseServer, PROXY_PORT, brokerIp);
+  await listen(tlsServer, TLS_PORT, brokerIp);
+  await dnsServer.start(brokerIp);
   await listen(healthServer, HEALTH_PORT, '127.0.0.1');
 
   audit.write({

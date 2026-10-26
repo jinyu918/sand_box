@@ -5,6 +5,7 @@ import { out } from './prompt.js';
 
 export async function downSession(ctx: CliContext, id: string): Promise<void> {
   const session = await loadSession(ctx.paths, id);
+  await ctx.docker.stopAndRemove(`cove-gw-${session.id}`);
   await ctx.docker.stopAndRemove(session.container);
   await ctx.docker.stopAndRemove(session.broker);
   await ctx.docker.removeNetwork(session.network);

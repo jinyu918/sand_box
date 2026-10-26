@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+mkdir -p "$HOME/.tmp" "$HOME/.cache"
+
 if [ -f /cove/config/codex-config.toml ]; then
   mkdir -p "$HOME/.codex"
   cp /cove/config/codex-config.toml "$HOME/.codex/config.toml"

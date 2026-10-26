@@ -91,7 +91,8 @@ export class DockerRuntime {
   }
 
   async removeNetwork(name: string): Promise<void> {
-    await this.runner.exec(this.docker, ['network', 'rm', name], { timeoutMs: 20_000 });
+    const result = await this.runner.exec(this.docker, ['network', 'rm', name], { timeoutMs: 20_000 });
+    assertCleanup(result, 'network', name);
   }
 
   async startBroker(options: BrokerStartOptions): Promise<void> {
@@ -203,7 +204,7 @@ export class DockerRuntime {
   }
 
   async runSandboxDetached(options: SandboxStartOptions): Promise<string> {
-    const args = ['run', '-d', '--rm', ...sandboxCommonArgs(options), '--name', options.name];
+    const args = ['run', '-d', ...sandboxCommonArgs(options), '--name', options.name];
     if (options.publish !== undefined) {
       args.push('-p', `127.0.0.1:${options.publish.hostPort}:${options.publish.containerPort}`);
     }
@@ -227,12 +228,15 @@ export class DockerRuntime {
   }
 
   async stopAndRemove(name: string): Promise<void> {
-    await this.runner.exec(this.docker, ['stop', '--time', '5', name], { timeoutMs: 20_000 });
-    await this.runner.exec(this.docker, ['rm', '-f', name], { timeoutMs: 20_000 });
+    const stopped = await this.runner.exec(this.docker, ['stop', '--time', '5', name], { timeoutMs: 20_000 });
+    assertCleanup(stopped, 'container', name);
+    const removed = await this.runner.exec(this.docker, ['rm', '-f', name], { timeoutMs: 20_000 });
+    assertCleanup(removed, 'container', name);
   }
 
   async removeVolume(name: string): Promise<void> {
-    await this.runner.exec(this.docker, ['volume', 'rm', '-f', name], { timeoutMs: 20_000 });
+    const result = await this.runner.exec(this.docker, ['volume', 'rm', '-f', name], { timeoutMs: 20_000 });
+    assertCleanup(result, 'volume', name);
   }
 
   async logs(name: string): Promise<string> {
@@ -252,6 +256,49 @@ export class DockerRuntime {
       });
     }
     return result.stdout;
+  }
+
+  async startDshGateway(options: {
+    name: string;
+    image: string;
+    network: string;
+    sandboxName: string;
+    hostPort: number;
+    containerPort: number;
+  }): Promise<void> {
+    const sandboxIp = await this.containerIp(options.sandboxName, options.network);
+    if (!/^\d+\.\d+\.\d+\.\d+$/u.test(sandboxIp)) {
+      throw new CoveError('DOCKER_FAILED', '无法获取 DSH 容器地址');
+    }
+    const script = `const net=require('net');net.createServer(c=>{const u=net.connect(${options.containerPort},'${sandboxIp}');c.pipe(u).pipe(c);c.on('error',()=>u.destroy());u.on('error',()=>c.destroy());}).listen(${options.containerPort},'0.0.0.0');`;
+    const result = await this.runner.exec(this.docker, [
+      'run',
+      '-d',
+      '--name',
+      options.name,
+      '--label',
+      'cove.role=dsh-gateway',
+      '--network',
+      'bridge',
+      '-p',
+      `127.0.0.1:${options.hostPort}:${options.containerPort}`,
+      '--entrypoint',
+      'node',
+      options.image,
+      '-e',
+      script,
+    ], { timeoutMs: 40_000 });
+    if (result.code !== 0) {
+      throw new CoveError('DOCKER_FAILED', '无法启动 DSH 本地端口网关', {
+        hint: result.stderr.trim().slice(0, 300),
+      });
+    }
+    const connected = await this.runner.exec(this.docker, ['network', 'connect', options.network, options.name], { timeoutMs: 20_000 });
+    if (connected.code !== 0) {
+      throw new CoveError('DOCKER_FAILED', '无法连接 DSH 网关到沙箱网络', {
+        hint: connected.stderr.trim().slice(0, 300),
+      });
+    }
   }
 
   async waitContainer(name: string): Promise<number> {
@@ -313,4 +360,11 @@ function sandboxCommonArgs(options: SandboxStartOptions): string[] {
 
 function sanitizeHint(value: string): string {
   return value.replace(/\u001b\[[0-9;]*m/gu, '').trim().slice(0, 800);
+}
+
+function assertCleanup(result: { code: number; stderr: string }, kind: string, name: string): void {
+  if (result.code === 0) return;
+  const message = sanitizeHint(result.stderr);
+  if (/no such (container|network|volume)|already in progress|already removed|not found/iu.test(message)) return;
+  throw new CoveError('DOCKER_FAILED', `清理 ${kind} 失败: ${name}`, { hint: message });
 }

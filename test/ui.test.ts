@@ -75,6 +75,16 @@ describe('local UI server', () => {
     expect(vaultFile).not.toContain('super-secret-value');
   });
 
+  it('falls back to another loopback port when the requested port is busy', async () => {
+    const { ctx } = await createContext();
+    const first = await startUiServer(ctx, { port: 0, open: false });
+    servers.push(first);
+    const busyPort = Number(new URL(first.url).port);
+    const second = await startUiServer(ctx, { port: busyPort, open: false });
+    servers.push(second);
+    expect(new URL(second.url).port).not.toBe(busyPort);
+  });
+
   it('asks for a secret when connecting a secret-backed MCP', async () => {
     const { ctx } = await createContext();
     const server = await startUiServer(ctx, { port: 0, open: false });

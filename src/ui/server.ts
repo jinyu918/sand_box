@@ -51,6 +51,10 @@ export async function startUiServer(ctx: CliContext, options: UiOptions = {}): P
 
 async function handleRequest(ctx: CliContext, csrf: string, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+  if (!/^127\.0\.0\.1:\d+$/u.test(req.headers.host ?? '')) {
+    sendJson(res, 403, { error: 'invalid_host' });
+    return;
+  }
   const method = (req.method ?? 'GET').toUpperCase();
 
   if (url.pathname === '/' || url.pathname === '/index.html') {

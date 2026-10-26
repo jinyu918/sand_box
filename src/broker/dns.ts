@@ -60,13 +60,13 @@ export class DnsServer {
     });
   }
 
-  async start(): Promise<void> {
+  async start(bindHost = '0.0.0.0'): Promise<void> {
     this.udp = dgram.createSocket('udp4');
     this.udp.on('message', (message, remote) => {
       const response = this.createResponse(message);
       if (response !== null) this.udp?.send(response, remote.port, remote.address);
     });
-    await bindUdp(this.udp, DNS_PORT);
+    await bindUdp(this.udp, DNS_PORT, bindHost);
 
     this.tcp = net.createServer((socket) => {
       let buffer = Buffer.alloc(0);
@@ -91,7 +91,7 @@ export class DnsServer {
     });
     await new Promise<void>((resolve, reject) => {
       this.tcp?.once('error', reject);
-      this.tcp?.listen(DNS_PORT, '0.0.0.0', () => resolve());
+      this.tcp?.listen(DNS_PORT, bindHost, () => resolve());
     });
   }
 
@@ -115,9 +115,9 @@ function encodeError(id: number, rcode: number): Buffer {
   });
 }
 
-function bindUdp(socket: dgram.Socket, port: number): Promise<void> {
+function bindUdp(socket: dgram.Socket, port: number, host: string): Promise<void> {
   return new Promise((resolve, reject) => {
     socket.once('error', reject);
-    socket.bind(port, '0.0.0.0', () => resolve());
+    socket.bind(port, host, () => resolve());
   });
 }

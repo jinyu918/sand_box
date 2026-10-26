@@ -108,6 +108,7 @@ function baseEnvironment(): Record<string, string> {
     HOME: '/home/agent',
     DSH_HOME: '/home/agent/.dsh',
     CODEX_HOME: '/home/agent/.codex',
+    TMPDIR: '/home/agent/.tmp',
     XDG_CONFIG_HOME: '/home/agent/.config',
     npm_config_cache: '/home/agent/.npm',
     NPM_CONFIG_UPDATE_NOTIFIER: 'false',

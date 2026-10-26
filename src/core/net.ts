@@ -41,7 +41,13 @@ export function normalizeRequestPath(rawPath: string): string {
   } catch {
     throw new CoveError('POLICY_DENIED', 'Invalid request path');
   }
-  return pathname.length === 0 ? '/' : pathname;
+  if (pathname.length === 0) return '/';
+  try {
+    const decoded = decodeURIComponent(pathname);
+    return new URL(decoded, 'https://cove.invalid').pathname || '/';
+  } catch {
+    return pathname;
+  }
 }
 
 export function pathMatchesPrefix(pathname: string, prefixes: readonly string[] | undefined): boolean {

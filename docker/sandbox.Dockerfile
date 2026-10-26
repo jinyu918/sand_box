@@ -22,20 +22,24 @@ RUN if [ "$APT_MIRROR" != "deb.debian.org" ]; then \
     ripgrep \
   && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g --no-audit --no-fund \
+RUN NODE_OPTIONS=--dns-result-order=ipv4first npm install -g --no-audit --no-fund \
     "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
     "@openai/codex@${CODEX_VERSION}" \
     "@deepseek-ai/dsh@${DSH_VERSION}" \
   && npm cache clean --force
 
-RUN useradd --create-home --uid 1000 --shell /bin/bash agent \
-  && mkdir -p /home/agent/.dsh /home/agent/.npm /home/agent/.config \
-  && chown -R agent:agent /home/agent
+RUN base=/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules \
+  && mkdir -p "$base/node-addon-require-builtin/build/napi/napi-v9-linux-x64-gnu" \
+  && cp "$base/node-addon-require-builtin-linux-x64-gnu/prebuilt/linux-x64-gnu-napi-v9.node" \
+        "$base/node-addon-require-builtin/build/napi/napi-v9-linux-x64-gnu/require_builtin.node"
+
+RUN mkdir -p /home/agent/.dsh /home/agent/.npm /home/agent/.config /home/agent/.tmp /home/agent/.cache \
+  && chown -R 1000:1000 /home/agent
 
 COPY docker/entrypoint.sh /usr/local/bin/cove-entrypoint
 RUN chmod 0755 /usr/local/bin/cove-entrypoint
 
-USER agent
+USER 1000:1000
 ENV HOME=/home/agent \
     DSH_HOME=/home/agent/.dsh \
     NPM_CONFIG_UPDATE_NOTIFIER=false \

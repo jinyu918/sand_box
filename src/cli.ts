@@ -57,9 +57,10 @@ program
   .argument('[args...]', '透传给 Agent 的参数（放在 -- 之后）')
   .option('--project <path>', '项目目录', process.cwd())
   .option('--allow-project-secrets', '允许项目内的 .env/私钥等文件进入沙箱', false)
+  .option('--trust-project-config', '信任项目 .cove/project.json 的额外出网规则', false)
   .option('--no-open', 'DSH 启动后不自动打开浏览器')
   .option('--no-tty', '不分配 TTY（用于脚本/CI）')
-  .action(async (agentArg: string, args: string[], options: { project: string; allowProjectSecrets: boolean; open: boolean; tty: boolean }) => {
+  .action(async (agentArg: string, args: string[], options: { project: string; allowProjectSecrets: boolean; trustProjectConfig: boolean; open: boolean; tty: boolean }) => {
     if (!isAgentId(agentArg)) {
       throw new CoveError('AGENT_UNKNOWN', `未知的 Agent: ${agentArg}`, {
         hint: `可用: ${AGENTS.map((item) => item.id).join(', ')}`,
@@ -71,6 +72,7 @@ program
       agent: agentArg,
       args,
       allowProjectSecrets: options.allowProjectSecrets,
+      trustProjectConfig: options.trustProjectConfig,
       open: options.open,
       tty: options.tty,
     });
