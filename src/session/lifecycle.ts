@@ -2,7 +2,7 @@ import { createServer } from 'node:net';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { buildAgentLaunch, requireAgent, type AgentId } from '../agents/profiles.js';
-import { loadOrCreateCa } from '../broker/ca.js';
+import { inspectCa, loadOrCreateCa } from '../broker/ca.js';
 import type { BrokerConfig } from '../broker/types.js';
 import type { GlobalConfig } from '../core/config.js';
 import { loadMcpState, loadProjectConfig } from '../core/config.js';
@@ -86,6 +86,12 @@ export async function runSession(deps: SessionDependencies, options: RunSessionO
     },
   };
 
+  const caState = await inspectCa(deps.paths, deps.vault);
+  if (!caState.ok) {
+    throw new CoveError('SETUP_REQUIRED', '本地 CA 尚未就绪，不能启动沙箱', {
+      hint: `运行 \`cove setup\` 初始化 CA（${caState.reason ?? '未知原因'}）`,
+    });
+  }
   const ca = await loadOrCreateCa(deps.paths, deps.vault);
   const sessionId = newSessionId();
   const record = await createSessionRecord(deps.paths, {

@@ -58,10 +58,12 @@ describe('PolicyEngine', () => {
     ).toBeUndefined();
   });
 
-  it('reports placeholder use in a URL', () => {
+  it('reports placeholder use in a URL or body', () => {
     const policy = new PolicyEngine(config);
     expect(policy.placeholderInUrl('/?token=sk-ant-cove_placeholder')).toBe(true);
     expect(policy.placeholderInUrl('/?token=other')).toBe(false);
+    expect(policy.placeholderInBody(Buffer.from('{"token":"sk-ant-cove_placeholder"}'))).toBe(true);
+    expect(policy.placeholderInBody(Buffer.from('{"token":"other"}'))).toBe(false);
   });
 
   it('rejects a policy that references an unknown credential', () => {

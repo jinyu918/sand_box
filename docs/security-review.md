@@ -24,10 +24,10 @@
 | I2 | 保险箱静态密文不含明文 | `test/vault` 扫描 `vault.json`；CLI 实测 `sk-ant-test-value-123` 不在文件中 | 通过 |
 | I3 | 沙箱无直接出网 | `test/integration` 沙箱访问 `example.com` 失败；internal 网络无默认路由 | 通过 |
 | I4 | 只有允许域名可解析 | broker DNS 对未知域名返回 NXDOMAIN；集成测试覆盖 | 通过 |
-| I5 | 占位符只在授权主机兑换 | 集成测试：授权主机收到真实头；其他凭据占位符发往本主机返回 403 并审计 | 通过 |
+| I5 | 占位符只在授权主机兑换 | 集成测试：授权主机收到真实头；其他凭据占位符发往本主机返回 403 并审计；Body 中的占位符返回 400 | 通过 |
 | I6 | 审计不含密钥/占位符/Header | 集成测试扫描 `audit.jsonl`，无 canary、无 `authorization` | 通过 |
 | I7 | 反向代理只走固定路由 | 集成测试 `broker:8080/anthropic/v1/messages` 注入并转发；其他前缀 404；broker 只绑定 internal IP | 通过 |
-| I8 | 失败关闭 | 缺密钥、缺 CA、镜像缺失、broker 不健康均在沙箱启动前失败；`doctor` 不创建 CA | 通过 |
+| I8 | 失败关闭 | 缺密钥、缺 CA、镜像缺失、broker 不健康均在沙箱启动前失败；`cove run` 不再自动创建缺失 CA；`doctor` 不创建 CA | 通过 |
 | I9 | UI 写请求需 CSRF + 同源 | `test/ui`：无 CSRF 403；有 CSRF 保存成功；密钥不回显；所有路径校验 Host | 通过 |
 | I10 | 会话清理无残留 | 真实镜像 E2E：Claude/Codex/DSH 会话结束后容器、网络、卷、网关清理；`session.json` 为 stopped | 通过 |
 
@@ -77,13 +77,15 @@
 | F5 | 中 | UI `hidden` 被 CSS 覆盖，首屏弹出密钥框 | 已修复，截图复验 |
 | F6 | 低 | `Vault.set` 未传 hosts 会清空已有 hosts | 已修复，继承已有值 |
 | F7 | 低 | `down --all` 不清理 failed 残留 | 已修复 |
-| F8 | 严重 | 独立复核：broker 监听 0.0.0.0，bridge 上其他容器可无认证调用反向代理并消耗密钥 | 已修复：DNS/TLS/8080 只绑定 internal IP；bridge 侧不再有监听 |
+| F8 | 严重 | 独立复核：broker 监听 0.0.0.0，bridge 上其他容器可无认证调用反向代理并消耗密钥 | 已修复：DNS/TLS/8080 只绑定 internal IP；集成测试从 bridge 容器探测得到 `BLOCKED` |
 | F9 | 严重 | 独立复核：DSH 日志 URL 未校验，Windows `cmd /c start` 可被 `&` 注入宿主命令 | 已修复：只接受 token 形式的 loopback URL；`openBrowser` 拒绝元字符；`httpReady` 不接受 404 |
 | F10 | 高 | 独立复核：项目 `.cove/project.json` 可自行增添出网规则/关闭密钥扫描 | 已修复：默认忽略项目 egress 与 allow 标记，需显式 `--trust-project-config` / `--allow-project-secrets` |
 | F11 | 高 | 独立复核：清理失败被吞、状态被覆盖、Ctrl-C 不清理 | 已修复：非零清理结果抛错、保留 failed、running 会话注册 SIGINT/SIGTERM、`down` 清理 DSH 网关 |
 | F12 | 中 | 独立复核：审计 path 可含占位符 | 已修复：审计所有字段对已知凭据值/占位符做替换 |
 | F13 | 中 | 独立复核：UI GET 未校验 Host | 已修复：所有请求先校验 `127.0.0.1:<port>` Host |
 | F14 | 中 | 独立复核：编码路径分隔符绕过前缀策略 | 已修复：解码并规范化路径后再匹配 |
+| F15 | 中 | 独立复核：Body 中的占位符不被扫描 | 已修复：Body 含已知占位符时返回 400 并审计 `placeholder_in_body` |
+| F16 | 中 | 缺失 CA 时 `cove run` 会静默创建 | 已修复：先只读检查，缺失则 `SETUP_REQUIRED`；仅 `cove setup` 创建 CA |
 
 ## 5. 残余风险（接受）
 
@@ -110,7 +112,8 @@ Edge headless 截图                                  通过（概览/密钥弹�
 
 真实镜像验收：`claude 2.1.310`、`codex 0.164.0`、`dsh 0.2.1-rc.2`；`cove run claude/codex`
 通过；`cove run dsh` 通过本地回环网关提供 Web UI（带 token），`cove doctor` 全绿。
-独立复核的 F8–F14 修复后，`pnpm test` 66 项通过；listener 绑定、Host/路径校验与审计脱敏由代码审查和针对性探测复核。
+独立复核的 F8–F16 修复后，`pnpm test` 66 项通过；其中 Docker 集成测试新增 bridge 侧探测（必须得到
+`BLOCKED`），并在 Docker 不可用时硬失败（显式设置 `COVE_SKIP_DOCKER=1` 才跳过）。
 
 ## 7. 独立复核
 

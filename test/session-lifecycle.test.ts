@@ -6,6 +6,7 @@ import { DEFAULT_GLOBAL_CONFIG } from '../src/core/config.js';
 import { resolveCovePaths } from '../src/core/paths.js';
 import { MemoryProtector } from '../src/vault/dpapi.js';
 import { Vault } from '../src/vault/vault.js';
+import { loadOrCreateCa } from '../src/broker/ca.js';
 import { runSession, type SessionDependencies } from '../src/session/lifecycle.js';
 import type { SandboxStartOptions } from '../src/docker/runtime.js';
 import type { SessionRecord } from '../src/session/store.js';
@@ -27,6 +28,7 @@ async function setup(agentSecret?: string) {
   if (agentSecret !== undefined) {
     await vault.set('anthropic', agentSecret, { hosts: ['api.anthropic.com'] });
   }
+  await loadOrCreateCa(paths, vault);
   let sandboxOptions: SandboxStartOptions | undefined;
   let brokerEnv: string | undefined;
   const sandboxConfigFiles = new Map<string, string>();

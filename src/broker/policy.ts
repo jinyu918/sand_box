@@ -79,6 +79,10 @@ export class PolicyEngine {
     return this.credentialsList().some((credential) => url.includes(credential.placeholder));
   }
 
+  placeholderInBody(body: Buffer): boolean {
+    return this.credentialsList().some((credential) => body.includes(Buffer.from(credential.placeholder, 'utf8')));
+  }
+
   authorizeReverse(route: { methods: string[]; paths?: string[] }, method: string, requestPath: string): boolean {
     return methodAllowed(route.methods, normalizeMethod(method)) && pathMatchesPrefix(normalizeRequestPath(requestPath), route.paths);
   }

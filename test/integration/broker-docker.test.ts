@@ -31,6 +31,9 @@ async function dockerOk(): Promise<boolean> {
 
 beforeAll(async () => {
   available = await dockerOk();
+  if (!available && process.env.COVE_SKIP_DOCKER !== '1') {
+    throw new Error('Docker is required for the Cove integration suite; set COVE_SKIP_DOCKER=1 to skip explicitly');
+  }
   if (!available) return;
   root = await mkdtemp(path.join(tmpdir(), 'cove-it-'));
   if ((await dockerRun(['image', 'inspect', brokerImage], 15_000)).code !== 0) {
@@ -53,8 +56,7 @@ afterAll(async () => {
 describe.skipIf(process.env.COVE_SKIP_DOCKER === '1')('broker + sandbox integration', () => {
   it('routes only allowed DNS, injects credentials, and audits without secrets', async () => {
     if (!available) {
-      // Docker is not available in this environment; the suite is skipped rather than faked.
-      return;
+      throw new Error('Docker is required for the Cove integration suite');
     }
     expect(root).toBeTruthy();
     const certDir = path.join(root, 'certs');
@@ -172,6 +174,24 @@ describe.skipIf(process.env.COVE_SKIP_DOCKER === '1')('broker + sandbox integrat
     await dockerRun(['network', 'connect', egressNet, brokerName]);
     const brokerIp = await docker.containerIp(brokerName, internalNet);
     expect(brokerIp).toMatch(/^\d+\.\d+\.\d+\.\d+$/u);
+
+    const networks = JSON.parse(
+      (await dockerRun(['inspect', '--format', '{{json .NetworkSettings.Networks}}', brokerName])).stdout,
+    ) as Record<string, { IPAddress?: string }>;
+    const bridgeIp = networks.bridge?.IPAddress;
+    expect(bridgeIp).toBeTruthy();
+    const bridgeProbe = await dockerRun([
+      'run',
+      '--rm',
+      '--network',
+      'bridge',
+      '--entrypoint',
+      'node',
+      brokerImage,
+      '-e',
+      `fetch('http://${bridgeIp}:8080/anthropic/v1/messages',{method:'POST'}).then(r=>console.log('REACHABLE '+r.status)).catch(()=>console.log('BLOCKED'))`,
+    ], 30_000);
+    expect(bridgeProbe.stdout).toContain('BLOCKED');
 
     const script = `
       (async () => {

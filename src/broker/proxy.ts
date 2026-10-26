@@ -134,6 +134,10 @@ export class ProxyHandler {
       this.deny(res, context.started, context.host, context.method, context.requestPath, requestError.status, '', requestError.code);
       return;
     }
+    if (this.policy.placeholderInBody(body)) {
+      this.deny(res, context.started, context.host, context.method, context.requestPath, 400, context.credential?.id ?? '', 'placeholder_in_body');
+      return;
+    }
 
     try {
       const upstream = await openUpstream({
