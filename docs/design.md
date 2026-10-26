@@ -122,6 +122,10 @@ docs/          requirements, design, threat-model, adr/, reviews/, user-guide
 
 未提供时使用默认值；`cove run` 不要求用户创建该文件。
 
+项目目录被视为不可信输入：默认**不采纳**其中的 `egress.extraHosts`，也不采纳
+`security.allowProjectSecretFiles`。需要时由用户显式传 `--trust-project-config`（仅额外出网规则）
+或 `--allow-project-secrets`（仅密钥文件扫描）；这样恶意仓库不能自行扩大出网白名单。
+
 ### 4.3 MCP 状态 `~/.cove/mcp.json`
 
 ```json
@@ -346,6 +350,7 @@ v0.1 不列入 preset，避免诱导用户在沙箱内登录。
 
 - 所有 Agent 共享 `NODE_EXTRA_CA_CERTS`、`SSL_CERT_FILE`、`REQUESTS_CA_BUNDLE`、`CURL_CA_BUNDLE`、
   `GIT_SSL_CAINFO`、`PIP_CERT` 指向信任包。
+- v0.1 镜像预装 Node 22；Python 未预装。使用 Python MCP 需要自定义镜像（P1）。
 - 关闭非必要遥测/自动更新：`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`、`DISABLE_TELEMETRY=1`、
   `NPM_CONFIG_UPDATE_NOTIFIER=false`；Codex/DSH 使用其支持的等价配置。
 - `HOME=/home/agent`、`DSH_HOME=/home/agent/.dsh`；不读取宿主 home。
@@ -390,8 +395,8 @@ v0.1 不列入 preset，避免诱导用户在沙箱内登录。
 ### 6.2 Broker 容器
 
 ```text
---network cove-net-<id> (internal) + bridge
---cap-drop ALL --cap-add NET_BIND_SERVICE
+--network cove-net-<id> (internal, alias "broker") + bridge
+--cap-drop ALL --cap-add NET_BIND_SERVICE --cap-add SETUID --cap-add SETGID
 --security-opt no-new-privileges:true
 --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m
 --pids-limit 256 --memory 512m --cpus 1 --init
@@ -400,6 +405,8 @@ v0.1 不列入 preset，避免诱导用户在沙箱内登录。
 ```
 
 - broker 进程以 root 启动，绑定 53/443 后立即 `setgid`/`setuid` 到 1000，并删除配置环境变量。
+  `SETUID`/`SETGID` 仅用于这次降权；降权后不再需要它们。若去掉这两个 capability，root 无法在
+  `--cap-drop ALL` 下降权，broker 会失败关闭。
 - 只暴露 DNS/TLS/反向代理/健康检查；没有管理 API，不发布端口到宿主机。
 - `--read-only` 根文件系统；审计目录是唯一可写挂载；写入失败只记录 stderr，不影响请求。
 - 健康检查访问容器内 `127.0.0.1:8081/health`。

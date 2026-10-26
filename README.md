@@ -4,7 +4,7 @@
 
 Cove 是一个面向本地 AI 编程 Agent（Claude Code、Codex、DeepSeek Harness/DSH）的桌面级安全沙箱。
 它把 Agent 关进一个一次性的 Linux 容器，只给它当前项目目录；同时把所有 API Key、Token、
-数据库密码留在宿主机的加密保险箱里，由宿主侧的可信代理在出网时注入。
+数据库密码留在宿主机的加密保险箱里，由可信 broker 容器在出网时注入。
 
 ```text
 ┌──────────────────────────────┐         ┌───────────────────────────┐
@@ -23,8 +23,8 @@ Cove 是一个面向本地 AI 编程 Agent（Claude Code、Codex、DeepSeek Harn
 
 ## 当前状态
 
-v0.1 正在按 [需求文档](docs/requirements.md) 和 [设计文档](docs/design.md) 开发。
-尚未发布，接口和配置格式可能变化。
+v0.1.0 已实现，验收平台为 **Windows 11 + Docker Desktop（Linux containers）**。
+需求、设计、威胁模型、评审记录与用户指南均已提交；接口和配置格式仍可能变化。
 
 ## 为什么需要 Cove
 
@@ -35,17 +35,22 @@ v0.1 正在按 [需求文档](docs/requirements.md) 和 [设计文档](docs/desi
 Cove 同时做三件事：
 
 1. **工作区隔离**：只挂载当前项目，非 root、只读根文件系统、无 Docker socket、无宿主 home。
-2. **网络收口**：沙箱没有直接出网能力，唯一可达的是宿主侧 broker；默认拒绝，按主机/方法/路径放行。
+2. **网络收口**：沙箱没有直接出网能力，唯一可达的是可信 broker 容器；默认拒绝，按主机/方法/路径放行。
 3. **凭据不落地**：密钥只存在于宿主机 DPAPI 保护的保险箱和 broker 内存中；沙箱里只有一次性占位符。
    broker 在 TLS 层完成真实凭据注入，并记录脱敏审计日志。
 
 对用户而言，配置只有两步：`cove setup`，然后在项目里 `cove run claude`。
 主流 MCP 通过 `cove mcp add <name>` 或本地控制台一键接入，沙箱配置文件里没有任何真实密钥。
 
-## 快速开始（目标形态）
+## 快速开始
 
 ```powershell
-# 1. 一次性初始化：检查 Docker、生成 CA、创建加密保险箱
+# 0. 从源码构建（首次需要数分钟）
+pnpm install
+pnpm build
+npm link
+
+# 1. 一次性初始化：检查 Docker、生成 CA、创建保险箱、构建镜像
 cove setup
 
 # 2. 保存密钥（输入不回显，不经过沙箱）
@@ -63,6 +68,13 @@ cove mcp list
 cove ui
 ```
 
+Docker 构建 apt/npm 较慢时：
+
+```powershell
+$env:COVE_APT_MIRROR = "mirrors.aliyun.com"
+cove build
+```
+
 ## 安全边界（摘要）
 
 Cove 的信任边界是 **Docker 容器**，不是虚拟机。它能显著降低 Agent 误用和提示注入造成的
@@ -77,9 +89,10 @@ v0.1 明确不支持：订阅制 OAuth 登录、需要原始 TCP 的 MCP（如 P
 - [需求文档](docs/requirements.md)
 - [设计文档](docs/design.md)
 - [威胁模型](docs/threat-model.md)
+- [安全评审](docs/security-review.md)
 - [架构决策记录](docs/adr/)
 - [提交评审记录](docs/reviews/)
-- [用户指南](docs/user-guide.md)（实现完成后补齐）
+- [用户指南](docs/user-guide.md)
 
 ## 开发
 
