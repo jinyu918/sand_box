@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Cove · 本地控制台</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="ambient" aria-hidden="true"></div>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+            <path d="M6 28c6-9 12-13 18-13s12 4 18 13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M9 34c5-6 11-9 15-9s10 3 15 9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity=".55" />
+            <circle cx="24" cy="12" r="2.2" fill="currentColor" />
+          </svg>
+          <div>
+            <div class="brand-name">Cove</div>
+            <div class="brand-sub">agent sandbox</div>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="主导航">
+          <button class="nav-item is-active" data-view="overview">
+            <span class="nav-dot"></span>概览
+          </button>
+          <button class="nav-item" data-view="secrets"><span class="nav-dot"></span>密钥</button>
+          <button class="nav-item" data-view="mcp"><span class="nav-dot"></span>MCP</button>
+          <button class="nav-item" data-view="activity"><span class="nav-dot"></span>活动</button>
+          <button class="nav-item" data-view="settings"><span class="nav-dot"></span>设置</button>
+        </nav>
+
+        <div class="sidebar-foot">
+          <div class="local-pill"><span class="pulse"></span>仅本机 · 127.0.0.1</div>
+          <div class="version" id="version">v0.1.0</div>
+        </div>
+      </aside>
+
+      <div class="content">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow" id="view-eyebrow">OVERVIEW</div>
+            <h1 id="view-title">安全舱</h1>
+          </div>
+          <div class="top-actions">
+            <div class="status-line" id="top-status"><span class="dot muted"></span><span>正在检查</span></div>
+            <button class="icon-button" id="refresh-button" title="刷新" aria-label="刷新">↻</button>
+          </div>
+        </header>
+
+        <section class="view is-active" data-section="overview">
+          <div class="hero">
+            <div class="hero-copy">
+              <h2>Agent 拿到工作区，<br /><em>拿不到你的密钥。</em></h2>
+              <p>
+                Cove 把 Claude Code、Codex、DSH 关进只挂载当前项目的 Linux 沙箱。
+                API Key 留在宿主保险箱，出网由 broker 按主机、方法、路径放行。
+              </p>
+              <div class="hero-actions">
+                <button class="primary" id="quick-setup">完成初始化</button>
+                <button class="ghost" data-goto="secrets">添加密钥</button>
+              </div>
+              <div class="hero-note" id="setup-note">首次使用：运行 <code>cove setup</code>，然后保存一个密钥。</div>
+            </div>
+            <div class="hero-diagram" aria-hidden="true">
+              <div class="diagram-box sandbox">
+                <span class="diagram-label">SANDBOX</span>
+                <strong>Agent</strong>
+                <span>仅占位符</span>
+                <span class="diagram-rail"></span>
+              </div>
+              <div class="diagram-flow"><span>allowed</span><i></i></div>
+              <div class="diagram-box broker">
+                <span class="diagram-label">TRUSTED</span>
+                <strong>Broker</strong>
+                <span>注入 · 审计</span>
+              </div>
+              <div class="diagram-flow"><span>HTTPS</span><i></i></div>
+              <div class="diagram-box upstream">
+                <span class="diagram-label">UPSTREAM</span>
+                <strong>API</strong>
+                <span>真实密钥只在内存</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="stats" id="stats"></div>
+
+          <div class="grid two">
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="eyebrow">QUICK START</div>
+                  <h3>三步开始</h3>
+                </div>
+              </div>
+              <div class="steps" id="quick-steps"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="eyebrow">RECENT</div>
+                  <h3>最近出网</h3>
+                </div>
+                <button class="text-button" data-goto="activity">查看全部</button>
+              </div>
+              <div class="activity-mini" id="activity-mini"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">SESSIONS</div>
+                <h3>会话</h3>
+              </div>
+              <span class="hint">Ctrl-C 会结束当前会话并清理容器</span>
+            </div>
+            <div id="sessions"></div>
+          </div>
+        </section>
+
+        <section class="view" data-section="secrets">
+          <div class="section-intro">
+            <div>
+              <h2>密钥只在这里</h2>
+              <p>DPAPI 加密保存在宿主。沙箱里只有一次性占位符，broker 在请求离开本机前替换为真实值。</p>
+            </div>
+            <button class="primary" id="add-custom-secret">添加自定义密钥</button>
+          </div>
+          <div class="card-grid" id="secret-grid"></div>
+          <div class="panel subtle-panel">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">LIFECYCLE</div>
+                <h3>密钥如何流动</h3>
+              </div>
+            </div>
+            <div class="flow-steps">
+              <div><span>01</span><strong>录入</strong><p>终端输入不回显，DPAPI CurrentUser 加密。</p></div>
+              <div><span>02</span><strong>占位</strong><p>启动会话时生成随机占位符，写入沙箱配置。</p></div>
+              <div><span>03</span><strong>兑换</strong><p>broker 只对授权主机替换 Header，记录脱敏审计。</p></div>
+              <div><span>04</span><strong>清理</strong><p>容器删除，密钥不落沙箱磁盘，也不进日志。</p></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" data-section="mcp">
+          <div class="section-intro">
+            <div>
+              <h2>MCP，不把 Token 带进沙箱</h2>
+              <p>接入时只在本机输入一次。Claude Code、Codex、DSH 的配置自动生成，里面只有占位符。</p>
+            </div>
+            <div class="legend"><span class="badge read">读</span><span class="badge write">写</span><span class="hint">写权限取决于你的 Token scope</span></div>
+          </div>
+          <div class="card-grid" id="mcp-grid"></div>
+          <div class="panel subtle-panel">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">NOT SUPPORTED IN v0.1</div>
+                <h3>边界</h3>
+              </div>
+            </div>
+            <p class="muted">
+              PostgreSQL/MySQL 等原始 TCP MCP、需要 OAuth 登录的服务、证书固定客户端不在 v0.1 范围。
+              这些场景会在接入时明确拒绝，而不是悄悄降级。
+            </p>
+          </div>
+        </section>
+
+        <section class="view" data-section="activity">
+          <div class="section-intro">
+            <div>
+              <h2>每一次出网都有记录</h2>
+              <p>只记录主机、方法、路径、状态与命中的凭据 ID；Header、Body、查询串和密钥不写审计。</p>
+            </div>
+            <button class="ghost" id="refresh-audit">刷新</button>
+          </div>
+          <div class="panel">
+            <div class="table-wrap" id="audit-table"></div>
+          </div>
+        </section>
+
+        <section class="view" data-section="settings">
+          <div class="section-intro">
+            <div>
+              <h2>本机设置</h2>
+              <p>Cove 不提供远程访问。控制台只监听 127.0.0.1，所有写请求需要同源与 CSRF Token。</p>
+            </div>
+          </div>
+          <div class="grid two">
+            <div class="panel">
+              <div class="panel-head"><div><div class="eyebrow">PATHS</div><h3>文件位置</h3></div></div>
+              <dl class="kv" id="settings-paths"></dl>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><div><div class="eyebrow">IMAGES</div><h3>运行时</h3></div></div>
+              <dl class="kv" id="settings-images"></dl>
+            </div>
+          </div>
+          <div class="panel subtle-panel">
+            <div class="panel-head"><div><div class="eyebrow">DIAGNOSTICS</div><h3>诊断</h3></div></div>
+            <p class="muted">在终端运行 <code>cove doctor</code> 获取逐项检查与修复建议。镜像缺失时运行 <code>cove build</code>。</p>
+            <div class="command-row"><code>cove doctor</code><button class="copy" data-copy="cove doctor">复制</button></div>
+          </div>
+        </section>
+
+        <footer class="footer">
+          <span>Cove v0.1.0 · local-only console</span>
+          <span>Docker boundary, not a VM · 详见 docs/threat-model.md</span>
+        </footer>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="modal-backdrop" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-head">
+          <div>
+            <div class="eyebrow" id="modal-eyebrow">SECRET</div>
+            <h3 id="modal-title">保存密钥</h3>
+          </div>
+          <button class="icon-button" id="modal-close" aria-label="关闭">×</button>
+        </div>
+        <form id="modal-form">
+          <div class="field" id="field-id">
+            <label for="secret-id">标识</label>
+            <input id="secret-id" name="id" autocomplete="off" spellcheck="false" placeholder="例如 anthropic" />
+            <small>小写字母、数字、点、下划线、连字符。</small>
+          </div>
+          <div class="field" id="field-label">
+            <label for="secret-label">显示名称</label>
+            <input id="secret-label" name="label" autocomplete="off" placeholder="例如 Anthropic API Key" />
+          </div>
+          <div class="field" id="field-hosts">
+            <label for="secret-hosts">允许主机</label>
+            <input id="secret-hosts" name="hosts" autocomplete="off" spellcheck="false" placeholder="api.example.com, api2.example.com" />
+            <small>真实密钥只会被注入到这些主机；多个用逗号分隔。</small>
+          </div>
+          <div class="field">
+            <label for="secret-value">密钥值</label>
+            <input id="secret-value" name="value" type="password" autocomplete="new-password" placeholder="不会回显，也不会写入日志" />
+            <small id="secret-help"></small>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="ghost" id="modal-cancel">取消</button>
+            <button type="submit" class="primary" id="modal-submit">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
